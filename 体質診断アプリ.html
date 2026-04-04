@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>体質診断アプリ</title>
+  <!-- React本体とReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- ブラウザ上でJSXを変換するためのBabel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- スタイル用のTailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // Reactの機能を読み込み
+    const { useState, useEffect } = React;
+
+    // --- アイコンコンポーネント (外部ライブラリの代わり) ---
+    const ChevronDown = ({ size = 24, className = "" }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m6 9 6 6 6-6"/></svg>
+    );
+    const ArrowLeft = ({ size = 24, className = "" }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+    );
+    const Check = ({ size = 24, className = "" }) => (
+      <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M20 6 9 17l-5-5"/></svg>
+    );
+
+    // --- 質問データ ---
+    const questions = [
+      // 虚実 8問
+      { id: 'q1', category: 'kyojitsu', text: '食欲は旺盛ですか', scale: 'positive' },
+      { id: 'q2', category: 'kyojitsu', text: '食べるのが速いですか', scale: 'positive' },
+      { id: 'q3', category: 'kyojitsu', text: '冷たいもので腹痛や下痢を起こしますか', scale: 'negative' },
+      { id: 'q4', category: 'kyojitsu', text: '暑がりですか', scale: 'positive' },
+      { id: 'q5', category: 'kyojitsu', text: 'よく寝汗をかきますか', scale: 'negative' },
+      { id: 'q6', category: 'kyojitsu', text: '皮膚は乾燥していますか', scale: 'negative' },
+      { id: 'q7', category: 'kyojitsu', text: '積極的な方だと思いますか', scale: 'positive' },
+      { id: 'q8', category: 'kyojitsu', text: '1日でも便秘すると不快ですか', scale: 'positive' },
+      // 寒熱 5問
+      { id: 'q9', category: 'kannetsu', text: '温めると具合がよくなることが多いですか', scale: 'negative' },
+      { id: 'q10', category: 'kannetsu', text: '尿の色が濃黄色ですか（目安：ビタミン剤を飲んだ時のように黄色い）', scale: 'positive' },
+      { id: 'q11', category: 'kannetsu', text: 'ほてる感じがよくありますか', scale: 'positive' },
+      { id: 'q12', category: 'kannetsu', text: '唾液はさらさらしていますか', scale: 'negative' },
+      { id: 'q13', category: 'kannetsu', text: '舌苔は乾燥していますか', scale: 'positive' },
+      // 気血水 2問
+      {
+        id: 'q14',
+        category: 'kiketsusui',
+        text: '以下の所見に該当するもので不調があれば押してください（複数選択可）',
+        options: [
+          { key: 'kikyo', label: '疲れやすい' },
+          { key: 'kitai', label: 'のどが詰まる感じがする' },
+          { key: 'kigyaku', label: '不安焦燥感がある' },
+          { key: 'oketsu', label: '生理異常がありますか（男性の方は押さない）' },
+          { key: 'oketsu', label: '肩こりをよく起こしますか' },
+          { key: 'kekkyo', label: '最近立ち眩みを起こしますか' },
+          { key: 'suitai', label: 'むくみやすいほうだと思いますか' },
+          { key: 'none', label: '特になし' }
+        ]
+      },
+      {
+        id: 'q15',
+        category: 'kiketsusui',
+        text: '以下の所見に該当するもので不調があれば押してください（複数選択可）',
+        options: [
+          { key: 'kikyo', label: '食後眠気が強いほうだと思いますか' },
+          { key: 'kitai', label: '不安感は強いですか' },
+          { key: 'kigyaku', label: '発作性の動悸が出ることがありますか' },
+          { key: 'oketsu', label: 'PMSはひどいほうだと思いますか（男性は押さない）' },
+          { key: 'oketsu', label: '痔はありますか' },
+          { key: 'kekkyo', label: '最近集中力が続かないなと感じますか' },
+          { key: 'suitai', label: '最近からだが重く感じることはありますか' },
+          { key: 'none', label: '特になし' }
+        ]
+      }
+    ];
+
+    // --- 5択の選択肢データ ---
+    const fiveScaleOptions = [
+      { label: 'よくあてはまる', score: 2 },
+      { label: 'やや当てはまる', score: 1 },
+      { label: 'わからない', score: 0 },
+      { label: 'あまり当てはまらない', score: -1 },
+      { label: 'まったく当てはまらない', score: -2 }
+    ];
+
+    // --- 結果説明データ ---
+    const resultData = {
+      kyojitsu: {
+        jitsu: {
+          title: "実証",
+          short: "本来、体力があって病気への抵抗力も強いエネルギッシュなタイプですね。ただ、その分ついつい自分の限界を超えて頑張りすぎてしまうところがあるようです。「ちょっと無理してるかな」と思ったら、意識して休息をとってご自身を労わってあげてくださいね。",
+          detail: "東洋医学では、生命力が「充実している」状態を指します。外からの病気（病邪）を跳ね返す力が強い反面、症状が出る時は激しく出やすく、便秘が続くと不快感を感じやすいといった特徴があります。体力に自信があるため限界まで頑張ってしまいがちですが、高血圧などの生活習慣病にも繋がりやすいため、時には意識して休息をとることも大切です。",
+          benefit: "とにかくエネルギッシュで活動的！少々の無理がきくタフさと、回復力の早さが最大の強みです。持ち前のパワフルさを活かすためにも、こまめなメンテナンスを心がけましょう。"
+        },
+        kyo: {
+          title: "虚証",
+          short: "少しエネルギーが不足気味で、体が「休みたい」とサインを出している状態です。冷たいものでお腹を下しやすかったりするのもその一つ。いつも頑張ってくれているご自身の体を、今は何よりも優先してゆっくり休ませてあげてくださいね。",
+          detail: "東洋医学では、生命力や潤いが「不足している」状態を指します。病気に対する抵抗力が弱めなため、冷えからくる腹痛や、皮膚の乾燥、寝汗などのサインが出やすくなります。まずは無理をせず、消化の良いものを食べて胃腸を整え、栄養と休息をたっぷり取ることで、少しずつエネルギーを増やしていきましょう。",
+          benefit: "体の小さな変化やSOSのサインにとても敏感です。「一病息災」という言葉があるように、無理をせずこまめに自分をケアできるため、結果的に大病を未然に防ぎやすいという大きな長所があります。"
+        },
+        chukan: {
+          title: "虚実中間証",
+          short: "体力や抵抗力は強すぎず弱すぎず、比較的バランスの取れた状態です。ただ、毎日の忙しさや疲れが溜まると、一時的にバランスが崩れてしまうことも。今の良い状態をキープするためにも、無理をしすぎず、ご自身を優しく労わる時間も大切にしてくださいね。",
+          detail: "東洋医学における「実証」と「虚証」のちょうど中間に位置するタイプです。体力や胃腸の働き、病気への抵抗力などが標準的で、比較的バランスが取れています。ただし、「絶対に不調にならない」というわけではなく、日々のストレスや過労、食生活の乱れなどによって、その時々で実証寄りになったり虚証寄りになったりと揺れ動くことがあります。今の健康的なベースを保つためにも、ご自身のちょっとした体調の変化に気を配ってあげてくださいね。",
+          benefit: "心身のバランスが良く、環境の変化にも柔軟に対応できる「適応力の高さ」が最大の長所です。極端な不調に陥りにくいため、睡眠や食事など日々のちょっとしたケアを心がけるだけで、健やかな状態を長くキープすることができます。"
+        }
+      },
+      kannetsu: {
+        netsu: {
+          title: "熱証",
+          short: "体の中に、少し余分な熱がこもってしまっているようです。暑がりだったり、イライラしやすかったりするのは、体がフル回転して熱を持っているサイン。頑張っている体を少しクールダウンさせて、ホッと一息ついてくださいね。",
+          detail: "新陳代謝が活発すぎる、あるいは体の冷却機能が追いつかず、熱が過剰になっている状態です。ほてる感じがよくあったり、舌が乾燥しやすかったり、尿の色が濃い黄色になるのも熱証のサインです。炎症を伴う症状が出やすいため、辛いものや脂っこいものを控え、体を適度に冷まして熱を逃がすような生活や食事がおすすめです。",
+          benefit: "代謝が良く、情熱的でアクティブに行動できるタイプです。熱を生み出す力が強いため、ひどい冷え性によるトラブルなどは起きにくいという強みを持っています。"
+        },
+        kan: {
+          title: "寒証",
+          short: "体を温めるエネルギーが少し不足して、冷えを感じている状態です。手足が冷えたりしていませんか？毎日頑張っている体を、お風呂や温かい飲み物で外からも内からもポカポカに温めて、優しく癒やしてあげてくださいね。",
+          detail: "新陳代謝が低下し、血巡りが悪くなることで全身に熱が行き渡らない状態です。温めると具合が良くなることが多く、体液がさらさらしているといった特徴があります。冷えることで痛みや下痢などの不調が出やすくなるため、冷たい飲食を避け、お風呂にゆっくり浸かるなど、外からも内からも体を温めるケアを心がけましょう。",
+          benefit: "常に穏やかで、物事に熱くなりすぎない冷静沈着さを持っています。過剰な熱を持たないため、高熱や激しい炎症性のトラブルが起きにくく、エネルギーを省エネで使うことができます。"
+        },
+        hei: {
+          title: "平証",
+          short: "体の熱バランスがちょうどよく、極端に熱がこもったり、冷えたりしていない安定した状態です。今の快適なバランスを保つためにも、季節の変わり目やクーラーの効きすぎなどには少し気をつけて、ご自身の体を優しく労わってあげてくださいね。",
+          detail: "東洋医学では「平証（へいしょう）」とも呼ばれる、寒熱のバランスが理想的に保たれている状態です。極端な暑がりでも寒がりでもなく、体温調節機能がスムーズに働いています。ただ、気候の変化や生活習慣の乱れ、ストレスなどによって、一時的に「熱」や「寒」のどちらかに傾くこともあります。今の良い巡りをキープするためにも、季節に合わせた服装や、温冷のバランスを意識した食事を心がけてあげてくださいね。",
+          benefit: "季節の変わり目や気温の変化にうまく順応できる「環境への適応力」が最大の長所です。厳しい暑さによる夏バテや、冬のひどい冷え込みなどによる不調にも比較的強く、一年を通して安定して自分のペースを保てる強みを持っています。"
+        }
+      },
+      kiketsusui: {
+        kikyo: {
+          title: "気虚",
+          short: "疲れやすかったり、食後に強い眠気を感じたりするのは、一生懸命頑張ってエネルギーを使い切ってしまっているサインかもしれません。今は無理をする時ではないので、温かいものを食べて、たっぷりと睡眠をとってくださいね。",
+          detail: "「気」は生命力の源。これが足りないと、バッテリー残量が少ないスマホのように、すぐに疲れてしまいます。食後に強い眠気を感じるのも、胃腸を動かすエネルギーが不足しているサインです。今は頑張りすぎるのは禁物。消化に良い温かいものを食べ、たっぷりと睡眠をとって、まずはエネルギーをチャージしてあげてください。",
+          benefit: "争いごとを好まない、とても穏やかで平和主義な性格の方が多いです。自分に無理な負荷をかけず、穏やかなペースで物事を進められる優しさを持っています。"
+        },
+        kitai: {
+          title: "気滞",
+          short: "いつも周りに気を配って、少し頑張りすぎていませんか？のどの詰まりや理由のない不安感は、心がリラックスを求めている証拠です。たまには肩の力をスッと抜いて、好きなことをして自分を甘やかしてあげてください。",
+          detail: "「気」は本来、体内を穏やかに巡るものですが、強いストレスなどが原因で、上半身に急激に突き上げてしまう状態です。焦燥感を伴う不安に襲われたり、発作性の動悸が出ることがあります。まずは意識して深い呼吸を心がけましょう。足元を温め、頭を冷やすことで、上に昇った気を下へ降ろしてあげるアプローチが大切です。",
+          benefit: "直感力や瞬発力に優れ、感受性がとても豊かなタイプです。いざという時の爆発的な行動力や、物事に対してまっすぐに向き合う情熱を持っています。"
+        },
+        kigyaku: {
+          title: "気逆",
+          short: "日々の疲れやストレスなどで、本来穏やかに巡るはずのエネルギーが上半身にカーッと上ってしまっている状態です。突然の動悸や焦燥感が出やすい時は、まずは深呼吸。足元を温めて、ゆっくり心と体を落ち着かせてあげましょう。",
+          detail: "日々の疲れやストレスなどで、本来穏やかに巡るはずのエネルギーが上半身にカーッと上ってしまっている状態です。突然の動悸や焦燥感が出やすい時は、まずは深呼吸。足元を温めて、ゆっくり心と体を落ち着かせてあげましょう。",
+          benefit: ""
+        },
+        kekkyo: {
+          title: "血虚",
+          short: "毎日頑張っているあなたの体に、十分な栄養と潤いが届ききっていないサインかもしれません。気づかないうちに体に無理をさせていませんか？たまにはご自身の体にも、たっぷり栄養をご褒美にあげて、ゆっくりいたわってあげてくださいね。",
+          detail: "東洋医学でいう「血」は、全身を潤し、精神を安定させる大切な栄養素です。これが不足すると、立ちくらみが気になったり、脳に栄養がいかず集中力が続かなくなったりします。目を使いすぎると「血」を消費してしまうため、スマホの見過ぎなどには注意。レバーやほうれん草、黒豆など、「血」を補う食材を積極的に摂りましょう。",
+          benefit: "とても繊細で、物事の細部にまで気がつく優秀なセンサーを持っています。人の気持ちの機微に聡く、寄り添うことができる細やかさが大きな魅力です。"
+        },
+        oketsu: {
+          title: "瘀血",
+          short: "全身に栄養を運ぶ血の巡りが、少し滞っているサインです。知らず知らずのうちに体に力が入って、緊張状態が続いているのかもしれません。湯船にゆっくり浸かったり、軽いストレッチをして、こわばった体を優しくほぐしてあげてくださいね。",
+          detail: "冷えやストレス、運動不足などが原因で、古い「血」が体内のどこかに滞っている状態です。肩こりや、重い生理痛（PMS）などの痛みを伴う不調が出やすいのが特徴です。放置すると様々な病気の引き金にもなるため、湯船に浸かったり、適度な運動やストレッチを取り入れたりして、全身の血流をスムーズに保つことが非常に重要です。",
+          benefit: "非常に忍耐強く、一つのことにコツコツと取り組む粘り強さを持っています。その真面目さゆえに、同じ姿勢で長時間頑張り続けてしまい、血が滞りやすくなる傾向があります。"
+        },
+        suitai: {
+          title: "水滞",
+          short: "体内の水分バランスが少し崩れ、余分な水分が滞ってしまっているサインです。毎日の忙しさや疲れが、体の巡りを悪くしているのかもしれませんね。温かいものを飲んで、少し汗をかくようなリフレッシュを日常に取り入れてみてください。",
+          detail: "東洋医学では、血液以外の体液を「水（すい）」と呼びます。この巡りが悪くなり、体の一部に水が停滞している状態です。体が重だるく感じたり、むくみやすかったりするのは水が溜まっているサイン。塩分や冷たい飲み物を少し控えめにし、適度な運動で汗をかく習慣をつけて、余分な水分を外へ排出してあげましょう。",
+          benefit: "本来、体に潤いをしっかり留めておく力があるということです。性格的にもおっとりとしていて、周囲を安心させるようなマイペースな魅力を持っています。"
+        }
+      }
+    };
+
+    // --- アコーディオンコンポーネント ---
+    const Accordion = ({ data }) => {
+      const [isOpen, setIsOpen] = useState(false);
+      return (
+        <div className="mt-4 border border-green-200 rounded-lg overflow-hidden bg-white shadow-sm">
+          <button 
+            onClick={() => setIsOpen(!isOpen)} 
+            className="w-full text-left p-4 bg-green-50/50 hover:bg-green-50 flex justify-between items-center transition-colors"
+          >
+            <span className="text-green-800 font-medium text-sm">詳しく知りたい方はこちら</span>
+            <ChevronDown size={20} className={`text-green-700 transform transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
+          </button>
+          {isOpen && (
+            <div className="p-4 border-t border-green-100 text-sm leading-relaxed text-gray-700 space-y-4 animate-in slide-in-from-top-2 duration-300">
+              <p>{data.detail}</p>
+              {data.benefit && (
+                <div className="bg-orange-50 p-3 rounded-md">
+                  <p className="font-bold text-orange-800 mb-1">【あなたの体質のメリット】</p>
+                  <p className="text-orange-900">{data.benefit}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // --- スコアバーコンポーネント ---
+    const ScoreBar = ({ score, min, max, leftLabel, rightLabel, centerLabel, leftColor, rightColor }) => {
+      const clampedScore = Math.min(Math.max(score, min), max);
+      const percentage = ((clampedScore - min) / (max - min)) * 100;
+
+      return (
+        <div className="my-6 px-2">
+          <div className="flex justify-between text-xs text-gray-500 font-medium mb-2">
+            <span className="w-16 text-left">{leftLabel}</span>
+            <span className="w-16 text-center">{centerLabel}</span>
+            <span className="w-16 text-right">{rightLabel}</span>
+          </div>
+          <div className="relative h-3 bg-gray-200 rounded-full">
+            <div 
+              className="absolute top-0 bottom-0 left-0 right-0 rounded-full opacity-60" 
+              style={{ background: `linear-gradient(to right, ${leftColor}, #e5e7eb, ${rightColor})` }}
+            ></div>
+            <div className="absolute top-0 bottom-0 left-1/2 w-px bg-gray-400"></div>
+            <div
+              className="absolute top-1/2 -mt-2.5 h-5 w-5 bg-white rounded-full shadow-md border-2 border-green-600 transition-all duration-500 ease-out z-10"
+              style={{ left: `calc(${percentage}% - 10px)` }}
+            ></div>
+          </div>
+        </div>
+      );
+    };
+
+    // --- メインアプリケーション ---
+    function App() {
+      const [step, setStep] = useState('start');
+      const [currentIndex, setCurrentIndex] = useState(0);
+      const [answers, setAnswers] = useState({});
+      const [multiSelections, setMultiSelections] = useState([]);
+
+      const handleStart = () => {
+        setAnswers({});
+        setCurrentIndex(0);
+        setMultiSelections([]);
+        setStep('question');
+      };
+
+      const handleBack = () => {
+        if (currentIndex > 0) {
+          setCurrentIndex(currentIndex - 1);
+          const prevQ = questions[currentIndex - 1];
+          if (prevQ.category === 'kiketsusui') {
+            setMultiSelections(answers[currentIndex - 1] || []);
+          }
+        }
+      };
+
+      const handleScaleAnswer = (score) => {
+        setAnswers({ ...answers, [currentIndex]: score });
+        if (currentIndex < questions.length - 1) {
+          setCurrentIndex(currentIndex + 1);
+        } else {
+          calculateResult();
+        }
+      };
+
+      const toggleMultiSelectionByIndex = (index, key) => {
+        if (key === 'none') {
+          setMultiSelections([{ index, key }]);
+          return;
+        }
+
+        let newSelections = [...multiSelections];
+        newSelections = newSelections.filter(item => item.key !== 'none');
+
+        const exists = newSelections.find(item => item.index === index);
+        if (exists) {
+          newSelections = newSelections.filter(item => item.index !== index);
+        } else {
+          newSelections.push({ index, key });
+        }
+        setMultiSelections(newSelections);
+      };
+
+      const handleMultiSubmit = () => {
+        const keys = multiSelections.map(item => item.key).filter(k => k !== 'none');
+        setAnswers({ ...answers, [currentIndex]: keys });
+        setMultiSelections([]);
+
+        if (currentIndex < questions.length - 1) {
+          setCurrentIndex(currentIndex + 1);
+        } else {
+          calculateResult();
+        }
+      };
+
+      const [result, setResult] = useState(null);
+
+      const calculateResult = () => {
+        let kyojitsuScore = 0;
+        let kannetsuScore = 0;
+        const kiketsusuiCounts = {};
+
+        questions.forEach((q, index) => {
+          const ans = answers[index];
+          if (ans === undefined) return;
+
+          if (q.category === 'kyojitsu') {
+            kyojitsuScore += (q.scale === 'positive' ? ans : -ans);
+          } else if (q.category === 'kannetsu') {
+            kannetsuScore += (q.scale === 'positive' ? ans : -ans);
+          } else if (q.category === 'kiketsusui') {
+            ans.forEach(key => {
+              kiketsusuiCounts[key] = (kiketsusuiCounts[key] || 0) + 1;
+            });
+          }
+        });
+
+        let kyojitsuType = 'chukan';
+        if (kyojitsuScore >= 6) kyojitsuType = 'jitsu';
+        else if (kyojitsuScore <= -6) kyojitsuType = 'kyo';
+
+        let kannetsuType = 'hei';
+        if (kannetsuScore >= 4) kannetsuType = 'netsu';
+        else if (kannetsuScore <= -4) kannetsuType = 'kan';
+
+        setResult({
+          kyojitsu: { score: kyojitsuScore, type: kyojitsuType },
+          kannetsu: { score: kannetsuScore, type: kannetsuType },
+          kiketsusui: kiketsusuiCounts
+        });
+        setStep('result');
+      };
+
+      if (step === 'start') {
+        return (
+          <div className="min-h-screen bg-[#f9f8f4] flex flex-col items-center justify-center p-6 font-sans">
+            <div className="max-w-md w-full bg-white rounded-2xl shadow-sm p-8 text-center border border-[#e8e6df]">
+              <h1 className="text-3xl font-bold text-green-800 mb-4 tracking-wider">体質診断</h1>
+              <p className="text-gray-600 mb-8 text-sm leading-relaxed">
+                15個の簡単な質問に答えて、<br />あなたの現在の体質（証）をチェックしましょう。
+              </p>
+              <button 
+                onClick={handleStart}
+                className="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-4 rounded-xl transition-colors shadow-md"
+              >
+                診断をはじめる
+              </button>
+            </div>
+          </div>
+        );
+      }
+
+      if (step === 'question') {
+        const currentQ = questions[currentIndex];
+        const progress = ((currentIndex) / questions.length) * 100;
+
+        return (
+          <div className="min-h-screen bg-[#f9f8f4] flex flex-col items-center py-10 px-4 font-sans">
+            <div className="max-w-md w-full">
+              <div className="mb-8">
+                <div className="flex justify-between items-center mb-2">
+                  {currentIndex > 0 ? (
+                    <button onClick={handleBack} className="flex items-center text-gray-500 hover:text-gray-800 text-sm p-1">
+                      <ArrowLeft size={16} className="mr-1" /> 戻る
+                    </button>
+                  ) : <div className="w-16"></div>}
+                  <span className="text-sm font-bold text-gray-500 tracking-widest">
+                    {currentIndex + 1} <span className="text-gray-300 mx-1">/</span> {questions.length}
+                  </span>
+                  <div className="w-16"></div>
+                </div>
+                <div className="w-full bg-gray-200 h-1.5 rounded-full overflow-hidden">
+                  <div 
+                    className="bg-green-600 h-full transition-all duration-300 ease-out"
+                    style={{ width: `${progress}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm p-6 sm:p-8 border border-[#e8e6df] min-h-[400px] flex flex-col">
+                <h2 className="text-lg sm:text-xl font-bold text-gray-800 mb-8 leading-relaxed">
+                  {currentQ.text}
+                </h2>
+
+                <div className="flex-grow flex flex-col justify-center space-y-3">
+                  {currentQ.category === 'kiketsusui' ? (
+                    <>
+                      {currentQ.options.map((opt, i) => {
+                        const isSelected = multiSelections.some(item => item.index === i);
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => toggleMultiSelectionByIndex(i, opt.key)}
+                            className={`flex items-center text-left w-full p-4 rounded-xl border-2 transition-all ${
+                              isSelected 
+                                ? 'border-green-600 bg-green-50' 
+                                : 'border-gray-100 bg-gray-50 hover:bg-gray-100 hover:border-gray-200'
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded border flex items-center justify-center mr-3 flex-shrink-0 ${
+                              isSelected ? 'bg-green-600 border-green-600' : 'border-gray-300 bg-white'
+                            }`}>
+                              {isSelected && <Check size={14} className="text-white" />}
+                            </div>
+                            <span className={`text-sm sm:text-base ${isSelected ? 'text-green-900 font-medium' : 'text-gray-700'}`}>
+                              {opt.label}
+                            </span>
+                          </button>
+                        );
+                      })}
+                      <div className="pt-6 mt-auto">
+                        <button 
+                          onClick={handleMultiSubmit}
+                          disabled={multiSelections.length === 0}
+                          className={`w-full py-4 rounded-xl font-bold transition-colors ${
+                            multiSelections.length > 0 
+                              ? 'bg-green-700 hover:bg-green-800 text-white shadow-md' 
+                              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                          }`}
+                        >
+                          次へ
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    fiveScaleOptions.map((opt, i) => (
+                      <button
+                        key={i}
+                        onClick={() => handleScaleAnswer(opt.score)}
+                        className="w-full text-center p-4 rounded-xl border border-gray-100 bg-gray-50 hover:bg-green-50 hover:border-green-300 text-gray-700 transition-colors shadow-sm active:bg-green-100"
+                      >
+                        {opt.label}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (step === 'result' && result) {
+        const kyoData = resultData.kyojitsu[result.kyojitsu.type];
+        const kanData = resultData.kannetsu[result.kannetsu.type];
+        const activeKiketsusui = Object.keys(result.kiketsusui).map(key => resultData.kiketsusui[key]);
+
+        return (
+          <div className="min-h-screen bg-[#f9f8f4] py-10 px-4 font-sans">
+            <div className="max-w-2xl mx-auto space-y-6">
+              
+              <div className="text-center mb-8">
+                <h1 className="text-2xl font-bold text-green-900">あなたの体質診断結果</h1>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm p-6 border border-[#e8e6df]">
+                <h2 className="text-sm font-bold text-gray-500 mb-2 border-b pb-2">エネルギーの量（虚実）</h2>
+                <div className="text-center py-4">
+                  <span className="text-3xl font-bold text-green-800 tracking-widest">{kyoData.title}</span>
+                </div>
+                
+                <ScoreBar 
+                  score={result.kyojitsu.score} 
+                  min={-16} max={16} 
+                  leftLabel="虚証 (-)" rightLabel="実証 (+)" centerLabel="中間証"
+                  leftColor="#93c5fd" rightColor="#fca5a5"
+                />
+
+                <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-xl">
+                  {kyoData.short}
+                </p>
+                <Accordion data={kyoData} />
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm p-6 border border-[#e8e6df]">
+                <h2 className="text-sm font-bold text-gray-500 mb-2 border-b pb-2">体の熱バランス（寒熱）</h2>
+                <div className="text-center py-4">
+                  <span className="text-3xl font-bold text-orange-700 tracking-widest">{kanData.title}</span>
+                </div>
+
+                <ScoreBar 
+                  score={result.kannetsu.score} 
+                  min={-10} max={10} 
+                  leftLabel="寒証 (-)" rightLabel="熱証 (+)" centerLabel="平証"
+                  leftColor="#93c5fd" rightColor="#fca5a5"
+                />
+
+                <p className="text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-xl">
+                  {kanData.short}
+                </p>
+                <Accordion data={kanData} />
+              </div>
+
+              {activeKiketsusui.length > 0 && (
+                <div className="bg-white rounded-2xl shadow-sm p-6 border border-[#e8e6df]">
+                  <h2 className="text-sm font-bold text-gray-500 mb-4 border-b pb-2">巡りの状態（気血水）</h2>
+                  <div className="space-y-6">
+                    {activeKiketsusui.map((item, idx) => (
+                      <div key={idx} className="border-l-4 border-green-600 pl-4 py-1">
+                        <h3 className="text-xl font-bold text-green-900 mb-2">{item.title}</h3>
+                        <p className="text-gray-700 text-sm leading-relaxed mb-2">
+                          {item.short}
+                        </p>
+                        <Accordion data={item} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-8 pb-12 text-center">
+                <button 
+                  onClick={handleStart}
+                  className="px-8 py-3 bg-white border-2 border-green-700 text-green-800 font-bold rounded-full hover:bg-green-50 transition-colors shadow-sm"
+                >
+                  最初からやり直す
+                </button>
+              </div>
+
+            </div>
+          </div>
+        );
+      }
+
+      return null;
+    }
+
+    // --- ReactをDOMにレンダリング ---
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
